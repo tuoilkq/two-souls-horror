@@ -106,18 +106,33 @@ function revivePartner(){if(partnerState?.id)socket.emit("revivePartner",partner
 function initGame(){
   if(renderer)return;
   addV2Interface();
-  scene=new THREE.Scene();scene.background=new THREE.Color(0x07100d);scene.fog=new THREE.FogExp2(0x07100d,.027);
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x18251f);
+  scene.fog=new THREE.FogExp2(0x18251f,.014);
   camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.1,180);
-  renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;document.body.appendChild(renderer.domElement);
+  renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.25;
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.domElement.style.touchAction="none";
+  document.body.appendChild(renderer.domElement);
   clock=new THREE.Clock();
-  scene.add(new THREE.HemisphereLight(0x8b9b9a,0x10150f,1.0));
-  const moon=new THREE.DirectionalLight(0x9aaeb0,.65);moon.position.set(-20,35,10);moon.castShadow=true;scene.add(moon);
+  scene.add(new THREE.HemisphereLight(0xb9d0d0,0x344033,1.8));
+  scene.add(new THREE.AmbientLight(0x8b9a83,.55));
+  const moon=new THREE.DirectionalLight(0xc4d8df,1.25);
+  moon.position.set(-20,35,10);
+  moon.castShadow=true;
+  scene.add(moon);
   makeWorld();makePlayer();makeMonster();setupControls();window.addEventListener("resize",onResize);animate();
 }
 function mat(color,roughness=1){return new THREE.MeshStandardMaterial({color,roughness})}
 function makeWorld(){
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(120,120),mat(0x17231b));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
-  const trunk=mat(0x211b16),leaves=mat(0x101d17),rock=mat(0x343a34);
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(120,120),mat(0x344638));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+  const trunk=mat(0x493a2d),leaves=mat(0x263d30),rock=mat(0x566057);
   for(let i=0;i<115;i++){
     const x=(Math.random()-.5)*100,z=(Math.random()-.5)*100;if(Math.abs(x)<5&&z>0&&z<15)continue;
     const h=3+Math.random()*5;
@@ -126,19 +141,19 @@ function makeWorld(){
     colliders.push({x,z,r:.65});
   }
   // Abandoned cabin
-  const cabin=new THREE.Group();const wood=mat(0x30271f);
+  const cabin=new THREE.Group();const wood=mat(0x51402f);
   const base=new THREE.Mesh(new THREE.BoxGeometry(9,4.4,7),wood);base.position.y=2.2;cabin.add(base);
-  const roof=new THREE.Mesh(new THREE.ConeGeometry(6.7,3.4,4),mat(0x171817));roof.rotation.y=Math.PI/4;roof.position.y=6;cabin.add(roof);
+  const roof=new THREE.Mesh(new THREE.ConeGeometry(6.7,3.4,4),mat(0x303832));roof.rotation.y=Math.PI/4;roof.position.y=6;cabin.add(roof);
   cabin.position.set(0,0,-28);scene.add(cabin);
   const door=new THREE.Mesh(new THREE.BoxGeometry(1.5,2.8,.15),mat(0x100d0b));door.position.set(0,1.4,-24.45);scene.add(door);
   // Exit gate
   const gate=new THREE.Group();const iron=mat(0x58645b);
   for(let x=-2;x<=2;x+=.5){const bar=new THREE.Mesh(new THREE.BoxGeometry(.09,4,.12),iron);bar.position.set(x,2,0);gate.add(bar)}
   const beam=new THREE.Mesh(new THREE.BoxGeometry(4.2,.15,.15),iron);beam.position.y=4;gate.add(beam);gate.position.set(0,0,-48);scene.add(gate);
-  const light=new THREE.PointLight(0xffb05b,1.3,18);light.position.set(0,3,-25);scene.add(light);
+  const light=new THREE.PointLight(0xffc47a,2.0,24);light.position.set(0,3,-25);scene.add(light);
   // Fuse pickups
   const positions=[[-9,0,-12],[12,0,-24],[2,0,18]];
-  positions.forEach((p,i)=>{const g=new THREE.Group();const box=new THREE.Mesh(new THREE.BoxGeometry(.45,.7,.28),mat(0x9a6d3e));g.add(box);const glow=new THREE.PointLight(0x73d8c8,1.5,5);glow.position.y=.7;g.add(glow);g.position.set(...p);g.position.y=.8;g.userData.fuse=i;scene.add(g);fuseMeshes.push(g)});
+  positions.forEach((p,i)=>{const g=new THREE.Group();const box=new THREE.Mesh(new THREE.BoxGeometry(.45,.7,.28),mat(0x9a6d3e));g.add(box);const glow=new THREE.PointLight(0x73e8d8,2.4,7);glow.position.y=.7;g.add(glow);g.position.set(...p);g.position.y=.8;g.userData.fuse=i;scene.add(g);fuseMeshes.push(g)});
 }
 function makePlayer(){
   player=new THREE.Group();const body=new THREE.Mesh(new THREE.CapsuleGeometry(.38,.85,4,8),mat(0x455e55));body.position.y=1;body.castShadow=true;player.add(body);
@@ -165,19 +180,46 @@ function makeMonster(){
   scene.add(monster);
 }
 function setupControls(){
-  document.addEventListener("keydown",e=>{keys[e.key.toLowerCase()]=true;if(e.key.toLowerCase()==="c")$("cameraBtn").click();if(e.key.toLowerCase()==="e")interact()});
-  document.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
-  renderer.domElement.addEventListener("click",()=>{if(!("ontouchstart"in window))renderer.domElement.requestPointerLock?.()});
+  const keyMap={
+    KeyW:"w",ArrowUp:"w",KeyS:"s",ArrowDown:"s",
+    KeyA:"a",ArrowLeft:"a",KeyD:"d",ArrowRight:"d"
+  };
+  document.addEventListener("keydown",e=>{
+    const target=e.target;
+    if(target&&(target.tagName==="INPUT"||target.tagName==="TEXTAREA"||target.isContentEditable))return;
+    const key=keyMap[e.code];
+    if(key){keys[key]=true;e.preventDefault()}
+    if(e.code==="KeyC")$("cameraBtn").click();
+    if(e.code==="KeyE"){e.preventDefault();interact()}
+    if(e.code==="ShiftLeft"||e.code==="ShiftRight")setSprint(true);
+  });
+  document.addEventListener("keyup",e=>{
+    const key=keyMap[e.code];
+    if(key){keys[key]=false;e.preventDefault()}
+    if(e.code==="ShiftLeft"||e.code==="ShiftRight")setSprint(false);
+  });
+  window.addEventListener("blur",()=>{
+    keys={};
+    setSprint(false);
+  });
+  renderer.domElement.addEventListener("click",()=>{
+    if(!("ontouchstart"in window)&&document.pointerLockElement!==renderer.domElement){
+      renderer.domElement.requestPointerLock?.();
+    }
+  });
+  renderer.domElement.addEventListener("contextmenu",e=>e.preventDefault());
   document.addEventListener("pointerlockchange",()=>mouseLocked=document.pointerLockElement===renderer.domElement);
-  document.addEventListener("mousemove",e=>{if(mouseLocked){yaw-=e.movementX*.0025;pitch=Math.max(-.5,Math.min(.5,pitch-e.movementY*.002))}});
+  document.addEventListener("mousemove",e=>{
+    if(!mouseLocked)return;
+    yaw-=e.movementX*.0025;
+    pitch=THREE.MathUtils.clamp(pitch-e.movementY*.002,-.65,.65);
+  });
   const joy=$("joystick"),stick=$("stick");
   joy.addEventListener("pointerdown",e=>{joystickActive=true;joy.setPointerCapture(e.pointerId);const r=joy.getBoundingClientRect();joystickOrigin={x:r.left+r.width/2,y:r.top+r.height/2};});
   joy.addEventListener("pointermove",e=>{if(!joystickActive)return;let dx=e.clientX-joystickOrigin.x,dy=e.clientY-joystickOrigin.y;const len=Math.hypot(dx,dy),max=35;if(len>max){dx=dx/len*max;dy=dy/len*max}stick.style.transform=`translate(${dx}px,${dy}px)`;move.x=dx/max;move.z=dy/max});
   const stop=()=>{joystickActive=false;move.x=0;move.z=0;stick.style.transform="translate(0,0)"};
   joy.addEventListener("pointerup",stop);joy.addEventListener("pointercancel",stop);
   $("interactBtn").onclick=interact;
-  document.addEventListener("keydown",e=>{if(e.key==="Shift")setSprint(true)});
-  document.addEventListener("keyup",e=>{if(e.key==="Shift")setSprint(false)});
   $("v2Sprint").addEventListener("pointerdown",()=>setSprint(true));
   ["pointerup","pointercancel","pointerleave"].forEach(evt=>$("v2Sprint").addEventListener(evt,()=>setSprint(false)));
   $("v2Use").onclick=interact;
@@ -204,7 +246,13 @@ function animate(){
     let forward=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)-move.z;
     let side=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0)+move.x;
     const len=Math.hypot(forward,side);if(len>1){forward/=len;side/=len}
-    const speed=sprinting&&(myState.stamina??100)>0?8:5.2;player.position.x+= (Math.sin(yaw)*forward+Math.cos(yaw)*side)*speed*dt;player.position.z+=(-Math.cos(yaw)*forward+Math.sin(yaw)*side)*speed*dt;
+    const speed=sprinting&&(myState.stamina??100)>0?8:5.2;
+    // Move in the same direction the camera faces: W forward, S backward,
+    // A left and D right. The input vector is normalized above for diagonals.
+    const forwardX=-Math.sin(yaw), forwardZ=-Math.cos(yaw);
+    const rightX=Math.cos(yaw), rightZ=-Math.sin(yaw);
+    player.position.x+=(forwardX*forward+rightX*side)*speed*dt;
+    player.position.z+=(forwardZ*forward+rightZ*side)*speed*dt;
     player.position.x=THREE.MathUtils.clamp(player.position.x,-49,49);player.position.z=THREE.MathUtils.clamp(player.position.z,-49,49);
     player.rotation.y=yaw;sendMove();
     // Monster AI is authoritative on the server. The client only interpolates its position.
@@ -214,8 +262,22 @@ function animate(){
       if(monster.position.distanceTo(player.position)<12&&performance.now()-lastMonsterWarning>5000){lastMonsterWarning=performance.now();showMessage("มีบางอย่างกำลังตามคุณอยู่…")}
     }
     // camera modes
-    if(cameraMode==="first"){camera.position.set(player.position.x,player.position.y+1.62,player.position.z);camera.rotation.order="YXZ";camera.rotation.set(pitch,yaw,0)}
-    else{const offset=new THREE.Vector3(Math.sin(yaw)*4,2.5,Math.cos(yaw)*4);camera.position.copy(player.position).add(offset);camera.lookAt(player.position.x,1.4,player.position.z)}
+    if(cameraMode==="first"){
+      camera.position.set(player.position.x,player.position.y+1.62,player.position.z);
+      camera.rotation.order="YXZ";
+      camera.rotation.set(pitch,yaw,0);
+    }else{
+      // Third-person orbit camera: horizontal mouse controls yaw,
+      // vertical mouse controls elevation, while remaining behind the player.
+      const distance=5;
+      const horizontal=Math.cos(pitch)*distance;
+      camera.position.set(
+        player.position.x+Math.sin(yaw)*horizontal,
+        THREE.MathUtils.clamp(2.5-Math.sin(pitch)*4,.55,5.5),
+        player.position.z+Math.cos(yaw)*horizontal
+      );
+      camera.lookAt(player.position.x,player.position.y+1.35,player.position.z);
+    }
     // Win/loss is confirmed only by server events.
   } else if(player){camera.position.set(player.position.x+7,5,player.position.z+9);camera.lookAt(player.position)}
   if(flashlight){flashlight.visible=flashlightOn}
