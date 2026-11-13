@@ -6,7 +6,7 @@ let scene, camera, renderer, clock, player, partner, monster, flashlight;
 let myId=null, roomCode=null, isHost=false, gameLive=false, cameraMode="third", flashlightOn=true;
 let yaw=0, pitch=0, keys={}, move={x:0,z:0}, fuseMeshes=[], collected=new Set(), playerName="Player";
 let monsterSpeed=1.6, lastMove=0, mouseLocked=false, joystickActive=false, joystickOrigin={x:0,y:0};
-let sprinting=false, myState={hp:100,stamina:100,battery:100,downed:false};
+let sprinting=false, touchLookId=null, touchLookLast={x:0,y:0}, exploredObjects=new Set(), myState={hp:100,stamina:100,battery:100,downed:false};
 let partnerState=null, puzzleState={progress:0,solved:false};
 let lastMonsterWarning=0;
 const world={x:0,z:0};
@@ -74,12 +74,14 @@ function addV2Interface(){
   #v2Puzzle{position:fixed;z-index:40;left:50%;top:50%;transform:translate(-50%,-50%);width:min(310px,90vw);padding:18px;text-align:center;background:#09120ff5;color:white;border:1px solid #82958a;border-radius:14px}
   #v2Puzzle button{margin:5px;padding:11px 16px;border-radius:8px;background:#26382e;color:white;border:1px solid #87998e;font-size:17px}
   @media(max-width:700px){#v2Hud{left:7px;top:7px;width:165px;padding:8px;font-size:11px}#v2Actions{right:7px;bottom:10px;max-width:185px}.v2btn{padding:9px;font-size:12px}}
+  @media(hover:hover){#v2LookHint{display:none}}
   `;document.head.appendChild(style);
   const hud=document.createElement("div");hud.id="v2Hud";hud.innerHTML=`<b>TWO SOULS · SURVIVAL</b>
   <div class="v2row"><label>HP <span id="v2HpText">100%</span></label><div class="v2track"><div id="v2Hp" class="v2fill" style="background:#d65b55"></div></div></div>
   <div class="v2row"><label>STAMINA <span id="v2StText">100%</span></label><div class="v2track"><div id="v2St" class="v2fill" style="background:#e2c36c"></div></div></div>
   <div class="v2row"><label>BATTERY <span id="v2BatText">100%</span></label><div class="v2track"><div id="v2Bat" class="v2fill" style="background:#80c9cf"></div></div></div>
   <div id="v2Status">เก็บ Fuse 3 ชิ้น และแก้รหัส</div>`;document.body.appendChild(hud);
+  const lookHint=document.createElement("div");lookHint.id="v2LookHint";lookHint.textContent="ลากนิ้วบนพื้นที่ด้านขวาเพื่อหมุนกล้อง · ซ้ายใช้เดิน";lookHint.style.cssText="position:fixed;right:12px;bottom:92px;z-index:18;color:#fff9;background:#07100d88;padding:7px 10px;border-radius:9px;font:600 11px system-ui;pointer-events:none";document.body.appendChild(lookHint);
   const actions=document.createElement("div");actions.id="v2Actions";actions.innerHTML=`<button class="v2btn" id="v2Sprint">วิ่ง</button><button class="v2btn" id="v2Use">สำรวจ / ใช้</button><button class="v2btn" id="v2Lamp">ไฟฉาย</button><button class="v2btn" id="v2Revive" style="display:none">ช่วยเพื่อน</button>`;document.body.appendChild(actions);
   const puzzle=document.createElement("div");puzzle.id="v2Puzzle";puzzle.style.display="none";puzzle.innerHTML=`<b style="font-size:18px">CABIN KEYPAD</b><p>ใส่รหัส 3 ตัวเพื่อปลดล็อกประตู</p><div id="v2PuzzleProgress">ความคืบหน้า 0 / 3</div><div>${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-code="${n}">${n}</button>`).join("")}</div><button id="v2PuzzleClose">ปิด</button>`;document.body.appendChild(puzzle);
 }
@@ -112,7 +114,14 @@ function initGame(){
   camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.1,180);
   renderer=new THREE.WebGLRenderer({antialias:true});
   renderer.setSize(innerWidth,innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));
+  renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+  renderer.domElement.style.touchAction="none";
+  document.documentElement.style.touchAction="none";
+  document.body.style.touchAction="none";
+  document.body.style.overscrollBehavior="none";
+  renderer.domElement.style.position="fixed";
+  renderer.domElement.style.inset="0";
+  renderer.domElement.style.zIndex="0";
   renderer.shadowMap.enabled=true;
   renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
@@ -131,29 +140,94 @@ function initGame(){
 }
 function mat(color,roughness=1){return new THREE.MeshStandardMaterial({color,roughness})}
 function makeWorld(){
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(120,120),mat(0x344638));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
-  const trunk=mat(0x493a2d),leaves=mat(0x263d30),rock=mat(0x566057);
-  for(let i=0;i<115;i++){
-    const x=(Math.random()-.5)*100,z=(Math.random()-.5)*100;if(Math.abs(x)<5&&z>0&&z<15)continue;
-    const h=3+Math.random()*5;
-    const t=new THREE.Mesh(new THREE.CylinderGeometry(.18,.35,h,6),trunk);t.position.set(x,h/2,z);t.castShadow=true;scene.add(t);
-    const crown=new THREE.Mesh(new THREE.ConeGeometry(1.8+Math.random(),4+Math.random()*2,7),leaves);crown.position.set(x,h+1.2,z);crown.castShadow=true;scene.add(crown);
-    colliders.push({x,z,r:.65});
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(120,120),mat(0x344638));
+  ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+  const trunk=mat(0x493a2d),leaves=mat(0x263d30),rockMat=mat(0x566057);
+  const moss=mat(0x3c563b),darkWood=mat(0x392b20),warmWood=mat(0x725238),metal=mat(0x59635d);
+  const addBox=(x,y,z,w,h,d,m,rot=0)=>{const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.rotation.y=rot;o.castShadow=true;o.receiveShadow=true;scene.add(o);return o};
+  const addRock=(x,z,scale=1)=>{const r=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),rockMat);r.position.set(x,.35*scale,z);r.scale.set(scale*1.2,scale*.65,scale);r.rotation.set(Math.random(),Math.random()*3,Math.random());r.castShadow=true;r.receiveShadow=true;scene.add(r)};
+
+  // Winding dirt trail from the starting clearing to the cabin and exit.
+  const trailMat=mat(0x746044),trailEdge=mat(0x4e4836);
+  const trail=[[-3,8],[-2,2],[-5,-5],[-2,-12],[3,-18],[1,-25],[0,-34],[0,-43],[0,-49]];
+  for(let i=0;i<trail.length-1;i++){
+    const [x1,z1]=trail[i],[x2,z2]=trail[i+1],dx=x2-x1,dz=z2-z1;
+    const length=Math.hypot(dx,dz),angle=Math.atan2(dx,dz);
+    const seg=new THREE.Mesh(new THREE.PlaneGeometry(3.4,length+1),trailMat);
+    seg.rotation.x=-Math.PI/2;seg.rotation.z=-angle;seg.position.set((x1+x2)/2,.018,(z1+z2)/2);scene.add(seg);
+    for(let side of [-1,1]){
+      for(let t=.18;t<.9;t+=.28){const x=x1+dx*t+Math.cos(angle)*side*2.0,z=z1+dz*t-Math.sin(angle)*side*2.0;if(Math.random()>.35)addRock(x,z,.18+Math.random()*.2)}
+    }
   }
-  // Abandoned cabin
-  const cabin=new THREE.Group();const wood=mat(0x51402f);
-  const base=new THREE.Mesh(new THREE.BoxGeometry(9,4.4,7),wood);base.position.y=2.2;cabin.add(base);
-  const roof=new THREE.Mesh(new THREE.ConeGeometry(6.7,3.4,4),mat(0x303832));roof.rotation.y=Math.PI/4;roof.position.y=6;cabin.add(roof);
+
+  // Forest with varied tree silhouettes and a clear playable starting area.
+  for(let i=0;i<105;i++){
+    const x=(Math.random()-.5)*108,z=(Math.random()-.5)*108;
+    if((Math.abs(x)<8&&z>-1&&z<13)||(Math.abs(x)<8&&z<-22&&z>-35))continue;
+    const h=4+Math.random()*6,r=.16+Math.random()*.22;
+    const t=new THREE.Mesh(new THREE.CylinderGeometry(r*.7,r*1.5,h,7),trunk);t.position.set(x,h/2,z);t.castShadow=true;scene.add(t);
+    const crownCount=Math.random()>.55?2:1;
+    for(let j=0;j<crownCount;j++){
+      const crown=new THREE.Mesh(new THREE.ConeGeometry(1.8+Math.random()*1.3,3.5+Math.random()*2.5,7),leaves);
+      crown.position.set(x,h*.72+j*1.35,z);crown.rotation.y=Math.random()*Math.PI;crown.castShadow=true;scene.add(crown);
+    }
+    colliders.push({x,z,r:.8});
+  }
+  // Fallen logs, stumps, boulders, ferns and grass clumps make the forest less empty.
+  for(let i=0;i<34;i++){
+    const x=(Math.random()-.5)*96,z=(Math.random()-.5)*96;
+    if(Math.abs(x)<5&&z>-27&&z<12)continue;
+    if(i%3===0){const log=new THREE.Mesh(new THREE.CylinderGeometry(.22,.28,2.8,7),warmWood);log.rotation.z=Math.PI/2;log.rotation.y=Math.random();log.position.set(x,.35,z);log.castShadow=true;scene.add(log)}
+    else if(i%3===1)addRock(x,z,.35+Math.random()*.65);
+    else{
+      for(let k=0;k<4;k++){const blade=new THREE.Mesh(new THREE.ConeGeometry(.18,.8,5),moss);blade.position.set(x+(Math.random()-.5)*.6,.35,z+(Math.random()-.5)*.6);blade.rotation.z=(Math.random()-.5)*.5;scene.add(blade)}
+    }
+  }
+  // Abandoned cabin with porch, windows, steps, roof beams and a lit entrance.
+  const cabin=new THREE.Group();
+  const base=new THREE.Mesh(new THREE.BoxGeometry(9,4.4,7),darkWood);base.position.y=2.2;base.castShadow=true;base.receiveShadow=true;cabin.add(base);
+  for(let y=.45;y<4.2;y+=.48){const plank=new THREE.Mesh(new THREE.BoxGeometry(9.05,.055,7.05),warmWood);plank.position.y=y;cabin.add(plank)}
+  const roof=new THREE.Mesh(new THREE.ConeGeometry(6.7,3.4,4),mat(0x303832));roof.rotation.y=Math.PI/4;roof.position.y=6;roof.castShadow=true;cabin.add(roof);
+  for(const x of [-4.25,4.25])for(const z of [-3.25,3.25]){const post=new THREE.Mesh(new THREE.BoxGeometry(.22,3.7,.22),warmWood);post.position.set(x,1.85,z);cabin.add(post)}
+  const windowMat=new THREE.MeshStandardMaterial({color:0x9b7447,emissive:0x5a3515,emissiveIntensity:.6});
+  for(const x of [-2.8,2.8]){const win=new THREE.Mesh(new THREE.BoxGeometry(1.15,1.05,.08),windowMat);win.position.set(x,2.65,3.56);cabin.add(win);addBox(x,2.65,-31.56,1.3,1.2,.12,metal)}
+  const porch=new THREE.Mesh(new THREE.BoxGeometry(5, .25, 2),warmWood);porch.position.set(0,.35,4.25);cabin.add(porch);
+  for(const x of [-1.8,1.8]){const step=new THREE.Mesh(new THREE.BoxGeometry(1.2,.2,.65),darkWood);step.position.set(x,.18,5.2);cabin.add(step)}
   cabin.position.set(0,0,-28);scene.add(cabin);
-  const door=new THREE.Mesh(new THREE.BoxGeometry(1.5,2.8,.15),mat(0x100d0b));door.position.set(0,1.4,-24.45);scene.add(door);
-  // Exit gate
-  const gate=new THREE.Group();const iron=mat(0x58645b);
-  for(let x=-2;x<=2;x+=.5){const bar=new THREE.Mesh(new THREE.BoxGeometry(.09,4,.12),iron);bar.position.set(x,2,0);gate.add(bar)}
-  const beam=new THREE.Mesh(new THREE.BoxGeometry(4.2,.15,.15),iron);beam.position.y=4;gate.add(beam);gate.position.set(0,0,-48);scene.add(gate);
-  const light=new THREE.PointLight(0xffc47a,2.0,24);light.position.set(0,3,-25);scene.add(light);
-  // Fuse pickups
+  addBox(0,1.4,-24.42,1.5,2.8,.18,mat(0x17110c));
+  addBox(-.48,1.45,-24.3,.08,2.7,.08,metal);
+  // Cabin lantern and campfire glow.
+  const light=new THREE.PointLight(0xffc47a,2.6,26);light.position.set(0,3.2,-23.8);scene.add(light);
+  const lantern=new THREE.Group();const lampGlass=new THREE.Mesh(new THREE.BoxGeometry(.32,.48,.32),new THREE.MeshBasicMaterial({color:0xffc16d}));lampGlass.position.y=1.9;lantern.add(lampGlass);const cap=new THREE.Mesh(new THREE.ConeGeometry(.28,.18,4),metal);cap.position.y=2.23;lantern.add(cap);lantern.position.set(-3.9,0,-23.8);scene.add(lantern);const lanternLight=new THREE.PointLight(0xffb65c,1.4,12);lanternLight.position.set(-3.9,2,-23.8);scene.add(lanternLight);
+  // Small campfire area and supply crates.
+  const fireBase=new THREE.Mesh(new THREE.CylinderGeometry(.9,1.05,.18,9),rockMat);fireBase.position.set(-7,.1,-5);scene.add(fireBase);
+  for(let i=0;i<6;i++){const a=i*Math.PI/3;addBox(-7+Math.cos(a)*.65,.28,-5+Math.sin(a)*.65,.85,.18,.18,darkWood,a)}
+  const fire=new THREE.PointLight(0xff7b32,2.2,13);fire.position.set(-7,1,-5);scene.add(fire);
+  const flame=new THREE.Mesh(new THREE.ConeGeometry(.34,1.2,7),new THREE.MeshBasicMaterial({color:0xff8a32}));flame.position.set(-7,.85,-5);scene.add(flame);
+  addBox(-9,.55,-7,1.2,1.1,1,warmWood,.2);addBox(-8.2,.4,-7.9,.8,.8,.8,darkWood,-.3);
+  // Broken fence and warning sign around the cabin approach.
+  for(let i=0;i<7;i++){const x=-8+i*1.1;addBox(x,.8,-19,.12,1.6,.12,metal);if(i<6)addBox(x+.55,1.15,-19,1.1,.12,.12,warmWood)}
+  addBox(7,1.7,-18,.18,3.4,.18,darkWood);addBox(7,2.65,-18,2.2,.8,.16,warmWood);addBox(7,2.65,-17.88,1.85,.48,.03,mat(0x252a24));
+  // Exit gate with side pillars and warning lights.
+  const gate=new THREE.Group();
+  for(let x=-2;x<=2;x+=.5){const bar=new THREE.Mesh(new THREE.BoxGeometry(.09,4,.12),metal);bar.position.set(x,2,0);gate.add(bar)}
+  const beam=new THREE.Mesh(new THREE.BoxGeometry(4.2,.15,.15),metal);beam.position.y=4;gate.add(beam);
+  for(const x of [-2.35,2.35]){const pillar=new THREE.Mesh(new THREE.BoxGeometry(.35,4.6,.35),darkWood);pillar.position.set(x,2.2,0);gate.add(pillar)}
+  gate.position.set(0,0,-48);scene.add(gate);
+  for(const x of [-2.3,2.3]){const glow=new THREE.PointLight(0xff563e,1.2,9);glow.position.set(x,3,-47.5);scene.add(glow)}
+  // Three fuse pickups with brighter beacon rings.
   const positions=[[-9,0,-12],[12,0,-24],[2,0,18]];
-  positions.forEach((p,i)=>{const g=new THREE.Group();const box=new THREE.Mesh(new THREE.BoxGeometry(.45,.7,.28),mat(0x9a6d3e));g.add(box);const glow=new THREE.PointLight(0x73e8d8,2.4,7);glow.position.y=.7;g.add(glow);g.position.set(...p);g.position.y=.8;g.userData.fuse=i;scene.add(g);fuseMeshes.push(g)});
+  positions.forEach((p,i)=>{
+    const g=new THREE.Group();const box=new THREE.Mesh(new THREE.BoxGeometry(.45,.7,.28),mat(0xb8894d));box.castShadow=true;g.add(box);
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(.58,.035,6,24),new THREE.MeshBasicMaterial({color:0x73e8d8}));ring.rotation.x=Math.PI/2;ring.position.y=-.25;g.add(ring);
+    const glow=new THREE.PointLight(0x73e8d8,2.8,8);glow.position.y=.7;g.add(glow);
+    g.position.set(...p);g.position.y=.8;g.userData.fuse=i;scene.add(g);fuseMeshes.push(g);
+  });
+  // Exploration points: radio, field notebook and emergency supply box.
+  const radio=new THREE.Group();addBox(-4,.55,-26,1.0,.55,.55,metal);addBox(-4,.95,-26,.75,.12,.38,darkWood);const antenna=new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,1.15,6),metal);antenna.position.set(-3.65,1.45,-26);antenna.rotation.z=-.25;radio.add(antenna);radio.position.set(0,0,0);scene.add(radio);radio.userData={kind:"radio",label:"วิทยุฉุกเฉิน"};
+  const notebook=new THREE.Group();const book=new THREE.Mesh(new THREE.BoxGeometry(.65,.12,.85),mat(0x8b4f38));book.position.y=.75;notebook.add(book);notebook.position.set(5,0,-8);scene.add(notebook);notebook.userData={kind:"note",label:"สมุดบันทึก"};
+  const supply=new THREE.Group();const crate=new THREE.Mesh(new THREE.BoxGeometry(1.1,.9,1),warmWood);crate.position.y=.45;supply.add(crate);for(let y=.1;y<.9;y+=.25){const strap=new THREE.Mesh(new THREE.BoxGeometry(1.12,.06,1.02),metal);strap.position.y=y;supply.add(strap)}supply.position.set(9,0,9);scene.add(supply);supply.userData={kind:"supply",label:"ลังเสบียง"};
+  window.explorationObjects=[radio,notebook,supply];
 }
 function makePlayer(){
   player=new THREE.Group();const body=new THREE.Mesh(new THREE.CapsuleGeometry(.38,.85,4,8),mat(0x455e55));body.position.y=1;body.castShadow=true;player.add(body);
@@ -198,12 +272,9 @@ function setupControls(){
     if(key){keys[key]=false;e.preventDefault()}
     if(e.code==="ShiftLeft"||e.code==="ShiftRight")setSprint(false);
   });
-  window.addEventListener("blur",()=>{
-    keys={};
-    setSprint(false);
-  });
+  window.addEventListener("blur",()=>{keys={};setSprint(false);touchLookId=null});
   renderer.domElement.addEventListener("click",()=>{
-    if(!("ontouchstart"in window)&&document.pointerLockElement!==renderer.domElement){
+    if(!("ontouchstart" in window)&&document.pointerLockElement!==renderer.domElement){
       renderer.domElement.requestPointerLock?.();
     }
   });
@@ -212,8 +283,54 @@ function setupControls(){
   document.addEventListener("mousemove",e=>{
     if(!mouseLocked)return;
     yaw-=e.movementX*.0025;
-    pitch=THREE.MathUtils.clamp(pitch-e.movementY*.002,-.65,.65);
+    pitch=THREE.MathUtils.clamp(pitch-e.movementY*.002,-.72,.72);
   });
+
+  // Mobile camera look: listen at document capture phase so HUD overlays
+  // cannot swallow the drag. Left side is reserved for the movement joystick.
+  const isTouchPointer=e => e.pointerType === "touch" ||
+    (e.pointerType === "" && navigator.maxTouchPoints > 0);
+  const isUiTarget=el => Boolean(el?.closest?.("button,input,textarea,select,#joystick,#v2Puzzle"));
+  document.addEventListener("pointerdown",e=>{
+    if(!isTouchPointer(e) || e.clientX < innerWidth * .42 || touchLookId !== null || isUiTarget(e.target)) return;
+    touchLookId=e.pointerId;
+    touchLookLast={x:e.clientX,y:e.clientY};
+    e.preventDefault();
+  },{capture:true,passive:false});
+  document.addEventListener("pointermove",e=>{
+    if(e.pointerId !== touchLookId) return;
+    const dx=e.clientX-touchLookLast.x, dy=e.clientY-touchLookLast.y;
+    touchLookLast={x:e.clientX,y:e.clientY};
+    yaw -= dx * .007;
+    pitch = THREE.MathUtils.clamp(pitch - dy * .006, -1.05, 1.05);
+    e.preventDefault();
+  },{capture:true,passive:false});
+  const stopTouchLook=e=>{if(e.pointerId===touchLookId)touchLookId=null};
+  document.addEventListener("pointerup",stopTouchLook,true);
+  document.addEventListener("pointercancel",stopTouchLook,true);
+
+  // Fallback for older iOS Safari versions without Pointer Events.
+  if(!window.PointerEvent){
+    let legacyTouchId=null;
+    document.addEventListener("touchstart",e=>{
+      const t=[...e.changedTouches].find(t=>t.clientX>=innerWidth*.42);
+      if(!t || legacyTouchId!==null || isUiTarget(e.target)) return;
+      legacyTouchId=t.identifier; touchLookLast={x:t.clientX,y:t.clientY};
+    },{passive:true});
+    document.addEventListener("touchmove",e=>{
+      if(legacyTouchId===null)return;
+      const t=[...e.changedTouches].find(t=>t.identifier===legacyTouchId);
+      if(!t)return;
+      const dx=t.clientX-touchLookLast.x,dy=t.clientY-touchLookLast.y;
+      touchLookLast={x:t.clientX,y:t.clientY};
+      yaw-=dx*.007; pitch=THREE.MathUtils.clamp(pitch-dy*.006,-1.05,1.05);
+      e.preventDefault();
+    },{passive:false});
+    const stopLegacy=()=>{legacyTouchId=null};
+    document.addEventListener("touchend",stopLegacy,{passive:true});
+    document.addEventListener("touchcancel",stopLegacy,{passive:true});
+  }
+
   const joy=$("joystick"),stick=$("stick");
   joy.addEventListener("pointerdown",e=>{joystickActive=true;joy.setPointerCapture(e.pointerId);const r=joy.getBoundingClientRect();joystickOrigin={x:r.left+r.width/2,y:r.top+r.height/2};});
   joy.addEventListener("pointermove",e=>{if(!joystickActive)return;let dx=e.clientX-joystickOrigin.x,dy=e.clientY-joystickOrigin.y;const len=Math.hypot(dx,dy),max=35;if(len>max){dx=dx/len*max;dy=dy/len*max}stick.style.transform=`translate(${dx}px,${dy}px)`;move.x=dx/max;move.z=dy/max});
@@ -236,6 +353,13 @@ function interact(){
   const cabinDistance=Math.hypot(player.position.x,player.position.z+27);
   if(cabinDistance<=8&&!puzzleState.solved){openPuzzle();return;}
   if(partnerState?.downed&&partner&&player.position.distanceTo(partner.position)<=3.5){revivePartner();return;}
+  let nearby=null,nearDist=3.2;
+  (window.explorationObjects||[]).forEach(o=>{const d=player.position.distanceTo(o.position);if(d<nearDist&&!exploredObjects.has(o.userData.kind)){nearby=o;nearDist=d}});
+  if(nearby){
+    exploredObjects.add(nearby.userData.kind);
+    const messages={radio:"วิทยุฉุกเฉิน: ได้ยินเสียงรบกวน… มีใครบางคนอยู่ในป่านี้",note:"สมุดบันทึก: ‘อย่าเปิดประตูห้องใต้ดินหลังเที่ยงคืน’",supply:"คุณค้นลังเสบียง พบผ้าพันแผลเก่าและแบตเตอรี่ที่ยังใช้ได้"};
+    showMessage(messages[nearby.userData.kind]||"คุณพบเบาะแสใหม่");return;
+  }
   showMessage("ไม่มีสิ่งของหรือจุดสำรวจอยู่ใกล้ๆ");
 }
 function updateFuses(ids){collected=new Set(ids);fuseMeshes.forEach(g=>g.visible=!collected.has(g.userData.fuse));$("fuseCount").textContent=`FUSES ${ids.length} / 3`;if(ids.length>=3){$("objectiveText").textContent="กลับไปที่ประตูทางออก";showMessage("ฟิวส์ครบแล้ว! กลับไปที่ประตู");}}
@@ -273,10 +397,14 @@ function animate(){
       const horizontal=Math.cos(pitch)*distance;
       camera.position.set(
         player.position.x+Math.sin(yaw)*horizontal,
-        THREE.MathUtils.clamp(2.5-Math.sin(pitch)*4,.55,5.5),
+        player.position.y+1.7+Math.sin(pitch)*distance,
         player.position.z+Math.cos(yaw)*horizontal
       );
-      camera.lookAt(player.position.x,player.position.y+1.35,player.position.z);
+      camera.lookAt(
+        player.position.x-Math.sin(yaw)*Math.sin(pitch)*2,
+        player.position.y+1.35+Math.sin(pitch)*2,
+        player.position.z+Math.cos(yaw)*Math.sin(pitch)*2
+      );
     }
     // Win/loss is confirmed only by server events.
   } else if(player){camera.position.set(player.position.x+7,5,player.position.z+9);camera.lookAt(player.position)}
