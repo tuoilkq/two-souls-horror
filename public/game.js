@@ -5,7 +5,7 @@ const $ = id => document.getElementById(id);
 let scene, camera, renderer, clock, player, partner, monster, flashlight;
 let myId=null, roomCode=null, isHost=false, gameLive=false, cameraMode="third", flashlightOn=true;
 let yaw=0, pitch=0, keys={}, move={x:0,z:0}, fuseMeshes=[], collected=new Set(), playerName="Player";
-let monsterSpeed=1.6, lastMove=0, mouseLocked=false, joystickActive=false, joystickOrigin={x:0,y:0};
+let monsterSpeed=1.6, lastMove=0, mouseLocked=false, joystickActive=false, joystickOrigin={x:0,y:0};\nlet hp=100, stamina=100, battery=100, puzzleSolved=false, puzzleProgress=0, sprinting=false, downed=false;
 const world={x:0,z:0};
 const mats={};
 const colliders=[];
@@ -28,7 +28,7 @@ $("joinBtn").onclick=()=>{playerName=$("playerName").value.trim()||"Player";sock
 $("copyBtn").onclick=()=>navigator.clipboard?.writeText(roomCode).then(()=>showMessage("คัดลอกรหัสห้องแล้ว"));
 $("startBtn").onclick=()=>{if(isHost)socket.emit("gameStarted")};
 $("cameraBtn").onclick=()=>{cameraMode=cameraMode==="third"?"first":"third";showMessage(cameraMode==="first"?"มุมมองบุคคลที่หนึ่ง":"มุมมองบุคคลที่สาม");sendMove()};
-$("flashBtn").onclick=()=>{flashlightOn=!flashlightOn;flashlight.visible=flashlightOn;$("flashBtn").textContent="ไฟฉาย: "+(flashlightOn?"เปิด":"ปิด")};
+$("flashBtn").onclick=()=>{flashlightOn=!flashlightOn;flashlight.visible=flashlightOn;socket.emit("flashlightState",flashlightOn);$("flashBtn").textContent="ไฟฉาย: "+(flashlightOn?"เปิด":"ปิด")};
 
 socket.on("roomState",state=>{
   $("playersText").textContent=state.count===2?"ผู้เล่นครบแล้ว! พร้อมเริ่มเกม":"กำลังรอผู้เล่นอีกคน…";
@@ -41,6 +41,15 @@ socket.on("playerMoved",p=>{makePartner(p);if(partner){partner.position.set(p.x,
 socket.on("partnerLeft",()=>{showMessage("ผู้เล่นอีกคนออกจากห้องแล้ว");$("partnerStatus").textContent="♥ เพื่อนร่วมทีม: หลุดการเชื่อมต่อ"});
 socket.on("gameStarted",()=>{gameLive=true;$("menu").classList.add("hidden");$("lobby").classList.add("hidden");showMessage("ภารกิจเริ่มแล้ว… จงอยู่ด้วยกัน");});
 socket.on("fusesUpdated",updateFuses);
+socket.on("v2State",state=>{
+  if(state.monster&&monster){monster.position.set(state.monster.x,0,state.monster.z);monster.rotation.y=state.monster.rot||0;}
+  const mine=state.players?.find(p=>p.id===myId);
+  if(mine){hp=mine.hp;stamina=mine.stamina;battery=mine.battery;updateVitals();}
+  if(state.puzzle){puzzleProgress=state.puzzle.progress;puzzleSolved=state.puzzle.solved;updatePuzzle();}
+});
+socket.on("puzzleState",state=>{puzzleProgress=state.progress;puzzleSolved=state.solved;updatePuzzle();});
+socket.on("gameWon",()=>{$("hud").classList.add("hidden");$("ending").classList.remove("hidden");});
+
 socket.on("connect",()=>{$("connection").textContent="● ONLINE"});
 socket.on("disconnect",()=>{$("connection").textContent="● DISCONNECTED";toast("การเชื่อมต่อขาดหาย")});
 
@@ -119,32 +128,48 @@ function interact(){
   let nearest=null,dist=2.6;
   fuseMeshes.forEach(g=>{if(g.visible){const d=player.position.distanceTo(g.position);if(d<dist){nearest=g;dist=d}}});
   if(nearest){const id=nearest.userData.fuse;nearest.visible=false;socket.emit("collectFuse",id);showMessage("เก็บฟิวส์แล้ว!");}
+  else if(Math.hypot(player.position.x,player.position.z+27)<8&&!puzzleSolved){
+    const next=[2,4,1][puzzleProgress];socket.emit("puzzleInput",next);
+    showMessage("แป้นรหัส: กด "+next+" · "+(puzzleProgress+1)+"/3");
+  } else if(Math.hypot(player.position.x,player.position.z+27)<8&&puzzleSolved)showMessage("ปลดล็อกรหัสห้องใต้ดินแล้ว");
   else showMessage("ไม่มีสิ่งของอยู่ใกล้ๆ");
 }
-function updateFuses(ids){collected=new Set(ids);fuseMeshes.forEach(g=>g.visible=!collected.has(g.userData.fuse));$("fuseCount").textContent=`FUSES ${ids.length} / 3`;if(ids.length>=3){$("objectiveText").textContent="กลับไปที่ประตูทางออก";showMessage("ฟิวส์ครบแล้ว! กลับไปที่ประตู");}}
+function updateFuses(ids){collected=new Set(ids);fuseMeshes.forEach(g=>g.visible=!collected.has(g.userData.fuse));$("fuseCount").textContent=`FUSES ${ids.length} / 3`;if(ids.length>=3){$("objectiveText").textContent=puzzleSolved?"กลับไปที่ประตูทางออก":"ค้นหารหัสที่กระท่อม";showMessage("ฟิวส์ครบแล้ว! ยังต้องไขรหัสที่กระท่อม");}}
+function updateVitals(){
+  if($("hpBar"))$("hpBar").style.width=hp+"%";
+  if($("staminaBar"))$("staminaBar").style.width=stamina+"%";
+  if($("batteryBar"))$("batteryBar").style.width=battery+"%";
+  if($("hpValue"))$("hpValue").textContent=Math.ceil(hp);
+  if($("batteryValue"))$("batteryValue").textContent=Math.ceil(battery);
+  if(hp<=0&&!downed){downed=true;showMessage("คุณหมดแรง! เพื่อนต้องช่วยพาคุณหนี");}
+}
+function updatePuzzle(){
+  if($("puzzleStatus"))$("puzzleStatus").textContent=puzzleSolved?"รหัสถูกต้อง ✓":"รหัสกระท่อม "+puzzleProgress+"/3 · ลำดับ 2-4-1";
+  if(puzzleSolved)$("objectiveText").textContent="กลับไปที่ประตูทางออก";
+}
 function sendMove(){if(!player)return;const now=performance.now();if(now-lastMove<70)return;lastMove=now;socket.emit("move",{x:player.position.x,z:player.position.z,rot:yaw,camera:cameraMode})}
 function animate(){
   requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.05);
   if(gameLive&&player){
-    let forward=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)-move.z;
+    let forward=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)-move.z;\n    sprinting=!!(keys.shift&&stamina>8);
     let side=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0)+move.x;
     const len=Math.hypot(forward,side);if(len>1){forward/=len;side/=len}
-    const speed=5.2;player.position.x+= (Math.sin(yaw)*forward+Math.cos(yaw)*side)*speed*dt;player.position.z+=(-Math.cos(yaw)*forward+Math.sin(yaw)*side)*speed*dt;
-    player.position.x=THREE.MathUtils.clamp(player.position.x,-49,49);player.position.z=THREE.MathUtils.clamp(player.position.z,-49,49);
+    const speed=sprinting?7.1:5.2;player.position.x+= (Math.sin(yaw)*forward+Math.cos(yaw)*side)*speed*dt;player.position.z+=(-Math.cos(yaw)*forward+Math.sin(yaw)*side)*speed*dt;
+    if(sprinting)socket.emit("sprint",true);\n    player.position.x=THREE.MathUtils.clamp(player.position.x,-49,49);player.position.z=THREE.MathUtils.clamp(player.position.z,-49,49);
     player.rotation.y=yaw;sendMove();
     // Monster follows the nearest player
     const target=partner&&partner.position.distanceTo(monster.position)<player.position.distanceTo(monster.position)?partner:player;
     const dir=new THREE.Vector3().subVectors(target.position,monster.position);const d=dir.length();
     if(d>1.8){dir.normalize();monster.position.addScaledVector(dir,monsterSpeed*dt);monster.rotation.y=Math.atan2(dir.x,dir.z)}
-    if(d<1.5){showMessage("มันพบคุณแล้ว! รีบหนี!");monsterSpeed=2.4}
+    if(d<1.8){showMessage("มันพบคุณแล้ว! รีบหนี!");monsterSpeed=2.4}
     // camera modes
     if(cameraMode==="first"){camera.position.set(player.position.x,player.position.y+1.62,player.position.z);camera.rotation.order="YXZ";camera.rotation.set(pitch,yaw,0)}
     else{const offset=new THREE.Vector3(Math.sin(yaw)*4,2.5,Math.cos(yaw)*4);camera.position.copy(player.position).add(offset);camera.lookAt(player.position.x,1.4,player.position.z)}
     // gate win
-    if(collected.size===3&&player.position.distanceTo(new THREE.Vector3(0,0,-46))<3){$("hud").classList.add("hidden");$("ending").classList.remove("hidden");}
+    if(collected.size===3&&puzzleSolved&&player.position.distanceTo(new THREE.Vector3(0,0,-46))<3){$("hud").classList.add("hidden");$("ending").classList.remove("hidden");}
     // lose condition: monster touch is intentionally a warning in this starter build
   } else if(player){camera.position.set(player.position.x+7,5,player.position.z+9);camera.lookAt(player.position)}
-  if(flashlight){flashlight.visible=flashlightOn}
+  if(flashlight){flashlight.visible=flashlightOn&&battery>0}
   if(renderer)renderer.render(scene,camera);
 }
 function onResize(){if(!camera||!renderer)return;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)}
