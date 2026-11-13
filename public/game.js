@@ -151,7 +151,7 @@ function sendMove(){if(!player)return;const now=performance.now();if(now-lastMov
 function animate(){
   requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.05);
   if(gameLive&&player){
-    let forward=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)-move.z;\n    sprinting=!!(keys.shift&&stamina>8);
+    let forward=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)-move.z;\n    sprinting=!!(keys.shift&&stamina>8);socket.emit("sprint",sprinting);
     let side=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0)+move.x;
     const len=Math.hypot(forward,side);if(len>1){forward/=len;side/=len}
     const speed=sprinting?7.1:5.2;player.position.x+= (Math.sin(yaw)*forward+Math.cos(yaw)*side)*speed*dt;player.position.z+=(-Math.cos(yaw)*forward+Math.sin(yaw)*side)*speed*dt;
