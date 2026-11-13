@@ -5,7 +5,8 @@ const $ = id => document.getElementById(id);
 let scene, camera, renderer, clock, player, partner, monster, flashlight;
 let myId=null, roomCode=null, isHost=false, gameLive=false, cameraMode="third", flashlightOn=true;
 let yaw=0, pitch=0, keys={}, move={x:0,z:0}, fuseMeshes=[], collected=new Set(), playerName="Player";
-let monsterSpeed=1.6, lastMove=0, mouseLocked=false, joystickActive=false, joystickOrigin={x:0,y:0};\nlet hp=100, stamina=100, battery=100, puzzleSolved=false, puzzleProgress=0, sprinting=false, downed=false;
+let monsterSpeed=1.6, lastMove=0, mouseLocked=false, joystickActive=false, joystickOrigin={x:0,y:0};
+let hp=100, stamina=100, battery=100, puzzleSolved=false, puzzleProgress=0, sprinting=false, downed=false;
 const world={x:0,z:0};
 const mats={};
 const colliders=[];
@@ -151,17 +152,15 @@ function sendMove(){if(!player)return;const now=performance.now();if(now-lastMov
 function animate(){
   requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.05);
   if(gameLive&&player){
-    let forward=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)-move.z;\n    sprinting=!!(keys.shift&&stamina>8);socket.emit("sprint",sprinting);
+    let forward=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)-move.z;
+    sprinting=!!(keys.shift&&stamina>8);socket.emit("sprint",sprinting);
     let side=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0)+move.x;
     const len=Math.hypot(forward,side);if(len>1){forward/=len;side/=len}
     const speed=sprinting?7.1:5.2;player.position.x+= (Math.sin(yaw)*forward+Math.cos(yaw)*side)*speed*dt;player.position.z+=(-Math.cos(yaw)*forward+Math.sin(yaw)*side)*speed*dt;
-    if(sprinting)socket.emit("sprint",true);\n    player.position.x=THREE.MathUtils.clamp(player.position.x,-49,49);player.position.z=THREE.MathUtils.clamp(player.position.z,-49,49);
+    if(sprinting)socket.emit("sprint",true);
+    player.position.x=THREE.MathUtils.clamp(player.position.x,-49,49);player.position.z=THREE.MathUtils.clamp(player.position.z,-49,49);
     player.rotation.y=yaw;sendMove();
-    // Monster follows the nearest player
-    const target=partner&&partner.position.distanceTo(monster.position)<player.position.distanceTo(monster.position)?partner:player;
-    const dir=new THREE.Vector3().subVectors(target.position,monster.position);const d=dir.length();
-    if(d>1.8){dir.normalize();monster.position.addScaledVector(dir,monsterSpeed*dt);monster.rotation.y=Math.atan2(dir.x,dir.z)}
-    if(d<1.8){showMessage("มันพบคุณแล้ว! รีบหนี!");monsterSpeed=2.4}
+    // Monster position and damage are controlled by the server and received via v2State.
     // camera modes
     if(cameraMode==="first"){camera.position.set(player.position.x,player.position.y+1.62,player.position.z);camera.rotation.order="YXZ";camera.rotation.set(pitch,yaw,0)}
     else{const offset=new THREE.Vector3(Math.sin(yaw)*4,2.5,Math.cos(yaw)*4);camera.position.copy(player.position).add(offset);camera.lookAt(player.position.x,1.4,player.position.z)}
