@@ -160,7 +160,8 @@ setInterval(() => {
     let target = null;
     for (const p of players) {
       if (!target || distance(p, room.monster) < distance(target, room.monster)) target = p;
-      p.stamina = clamp(p.stamina + (p.sprinting ? -2.8 : 1.8), 0, 100);\n      if (p.stamina <= 0) p.sprinting = false;
+      p.stamina = clamp(p.stamina + (p.sprinting ? -2.8 : 1.8), 0, 100);
+      if (p.stamina <= 0) p.sprinting = false;
       if (p.flashlight && p.battery > 0) p.battery = clamp(p.battery - 0.22, 0, 100);
       if (p.battery <= 0) p.flashlight = false;
     }
