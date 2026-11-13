@@ -20,7 +20,7 @@ io.on("connection", socket => {
     let code;
     do { code = makeCode(); } while (rooms.has(code));
     rooms.set(code, {
-      players: new Map(), fuses: [], started: false, won: false,
+      players: new Map(), fuses: [], started: false, won: false, hostId: socket.id,
       monster: { x: 22, z: -35, rot: 0, alert: false },
       puzzle: { progress: 0, solved: false, sequence: PUZZLE_SEQUENCE },
       createdAt: Date.now()
@@ -94,7 +94,7 @@ io.on("connection", socket => {
 
   socket.on("gameStarted", () => {
     const room = rooms.get(socket.data.room);
-    if (!room || room.players.size !== 2 || room.won) return;
+    if (!room || room.players.size !== 2 || room.won || room.hostId !== socket.id || room.started) return;
     room.started = true;
     room.fuses = [];
     room.monster = { x: 22, z: -35, rot: 0, alert: false };
@@ -113,7 +113,12 @@ io.on("connection", socket => {
     room.players.delete(socket.id);
     socket.to(code).emit("partnerLeft");
     if (room.players.size === 0) rooms.delete(code);
-    else emitState(code, room);
+    else {
+      room.started = false;
+      for (const p of room.players.values()) p.sprinting = false;
+      io.to(code).emit("roomState", { players: [...room.players.values()].map(publicPlayer), count: room.players.size, started: false, fuses: room.fuses });
+      emitState(code, room);
+    }
   });
 });
 
