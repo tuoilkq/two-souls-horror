@@ -6,7 +6,7 @@ let scene, camera, renderer, clock, player, partner, monster, flashlight;
 let myId=null, roomCode=null, isHost=false, gameLive=false, cameraMode="third", flashlightOn=true;
 let yaw=0, pitch=0, keys={}, move={x:0,z:0}, fuseMeshes=[], collected=new Set(), playerName="Player";
 let monsterSpeed=1.6, lastMove=0, mouseLocked=false, joystickActive=false, joystickOrigin={x:0,y:0};
-let hp=100, stamina=100, battery=100, puzzleSolved=false, puzzleProgress=0, sprinting=false, downed=false;
+let hp=100, stamina=100, battery=100, puzzleSolved=false, puzzleProgress=0, sprinting=false, sprintHeld=false, downed=false, touchLook=null, lastSprintSent=null;
 const world={x:0,z:0};
 const mats={};
 const colliders=[];
@@ -16,13 +16,15 @@ function toast(t){$("errorToast").textContent=t;$("errorToast").style.display="b
 function showMessage(t){$("message").textContent=t;$("message").classList.add("show");setTimeout(()=>$("message").classList.remove("show"),2600)}
 function connectRoom(result){
   if(!result?.ok){toast(result?.error||"เชื่อมต่อห้องไม่สำเร็จ");return}
-  myId=result.id;roomCode=result.code;isHost=isHost;
+  myId=result.id;roomCode=result.code;
   $("hud").classList.remove("hidden");
   $("connection").textContent="● ONLINE · "+roomCode;
   $("lobby").classList.remove("hidden");$("codeDisplay").textContent=roomCode;
   $("playersText").textContent="รอผู้เล่นอีกคนเข้าร่วมห้อง…";
   $("startBtn").disabled=true;
   initGame();
+  const me=result.players?.find(p=>p.id===myId);
+  if(me&&player) player.position.set(me.x,0,me.z);
 }
 $("createBtn").onclick=()=>{playerName=$("playerName").value.trim()||"Player";isHost=true;socket.emit("createRoom",playerName,connectRoom)};
 $("joinBtn").onclick=()=>{playerName=$("playerName").value.trim()||"Player";socket.emit("joinRoom",{code:$("roomCode").value,name:playerName},connectRoom)};
@@ -118,17 +120,22 @@ function setupControls(){
   document.addEventListener("pointerlockchange",()=>mouseLocked=document.pointerLockElement===renderer.domElement);
   document.addEventListener("mousemove",e=>{if(mouseLocked){yaw-=e.movementX*.0025;pitch=Math.max(-.5,Math.min(.5,pitch-e.movementY*.002))}});
   const joy=$("joystick"),stick=$("stick");
+  renderer.domElement.addEventListener("pointerdown",e=>{if(e.pointerType==="touch"){touchLook={x:e.clientX,y:e.clientY};renderer.domElement.setPointerCapture?.(e.pointerId)}});
+  renderer.domElement.addEventListener("pointermove",e=>{if(e.pointerType==="touch"&&touchLook&&!joystickActive){const dx=e.clientX-touchLook.x,dy=e.clientY-touchLook.y;yaw-=dx*.006;pitch=Math.max(-.5,Math.min(.5,pitch-dy*.004));touchLook={x:e.clientX,y:e.clientY}}});
+  renderer.domElement.addEventListener("pointerup",e=>{if(e.pointerType==="touch")touchLook=null});
   joy.addEventListener("pointerdown",e=>{joystickActive=true;joy.setPointerCapture(e.pointerId);const r=joy.getBoundingClientRect();joystickOrigin={x:r.left+r.width/2,y:r.top+r.height/2};});
   joy.addEventListener("pointermove",e=>{if(!joystickActive)return;let dx=e.clientX-joystickOrigin.x,dy=e.clientY-joystickOrigin.y;const len=Math.hypot(dx,dy),max=35;if(len>max){dx=dx/len*max;dy=dy/len*max}stick.style.transform=`translate(${dx}px,${dy}px)`;move.x=dx/max;move.z=dy/max});
   const stop=()=>{joystickActive=false;move.x=0;move.z=0;stick.style.transform="translate(0,0)"};
   joy.addEventListener("pointerup",stop);joy.addEventListener("pointercancel",stop);
   $("interactBtn").onclick=interact;
+  const sprintBtn=$("sprintBtn");
+  if(sprintBtn){sprintBtn.addEventListener("pointerdown",e=>{e.preventDefault();sprintHeld=true});["pointerup","pointercancel","pointerleave"].forEach(ev=>sprintBtn.addEventListener(ev,()=>sprintHeld=false));}
 }
 function interact(){
   if(!gameLive)return;
   let nearest=null,dist=2.6;
   fuseMeshes.forEach(g=>{if(g.visible){const d=player.position.distanceTo(g.position);if(d<dist){nearest=g;dist=d}}});
-  if(nearest){const id=nearest.userData.fuse;nearest.visible=false;socket.emit("collectFuse",id);showMessage("เก็บฟิวส์แล้ว!");}
+  if(nearest){const id=nearest.userData.fuse;socket.emit("collectFuse",id);showMessage("เก็บฟิวส์แล้ว!");}
   else if(Math.hypot(player.position.x,player.position.z+27)<8&&!puzzleSolved){
     const next=[2,4,1][puzzleProgress];socket.emit("puzzleInput",next);
     showMessage("แป้นรหัส: กด "+next+" · "+(puzzleProgress+1)+"/3");
@@ -153,19 +160,18 @@ function animate(){
   requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.05);
   if(gameLive&&player){
     let forward=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)-move.z;
-    sprinting=!!(keys.shift&&stamina>8);socket.emit("sprint",sprinting);
+    sprinting=!!((keys.shift||sprintHeld)&&stamina>8);
+    if(sprinting!==lastSprintSent){socket.emit("sprint",sprinting);lastSprintSent=sprinting;}
     let side=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0)+move.x;
     const len=Math.hypot(forward,side);if(len>1){forward/=len;side/=len}
     const speed=sprinting?7.1:5.2;player.position.x+= (Math.sin(yaw)*forward+Math.cos(yaw)*side)*speed*dt;player.position.z+=(-Math.cos(yaw)*forward+Math.sin(yaw)*side)*speed*dt;
-    if(sprinting)socket.emit("sprint",true);
     player.position.x=THREE.MathUtils.clamp(player.position.x,-49,49);player.position.z=THREE.MathUtils.clamp(player.position.z,-49,49);
     player.rotation.y=yaw;sendMove();
     // Monster position and damage are controlled by the server and received via v2State.
     // camera modes
     if(cameraMode==="first"){camera.position.set(player.position.x,player.position.y+1.62,player.position.z);camera.rotation.order="YXZ";camera.rotation.set(pitch,yaw,0)}
     else{const offset=new THREE.Vector3(Math.sin(yaw)*4,2.5,Math.cos(yaw)*4);camera.position.copy(player.position).add(offset);camera.lookAt(player.position.x,1.4,player.position.z)}
-    // gate win
-    if(collected.size===3&&puzzleSolved&&player.position.distanceTo(new THREE.Vector3(0,0,-46))<3){$("hud").classList.add("hidden");$("ending").classList.remove("hidden");}
+    // The server alone confirms the ending after validating the exit condition.
     // lose condition: monster touch is intentionally a warning in this starter build
   } else if(player){camera.position.set(player.position.x+7,5,player.position.z+9);camera.lookAt(player.position)}
   if(flashlight){flashlight.visible=flashlightOn&&battery>0}
