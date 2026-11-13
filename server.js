@@ -49,6 +49,12 @@ io.on("connection", socket => {
     socket.to(socket.data.room).emit("playerMoved", { id: socket.id, ...publicPlayer(p) });
   });
 
+  socket.on("sprint", enabled => {
+    const room = rooms.get(socket.data.room);
+    const p = room?.players.get(socket.id);
+    if (p) p.sprinting = Boolean(enabled);
+  });
+
   socket.on("flashlightState", enabled => {
     const room = rooms.get(socket.data.room);
     const p = room?.players.get(socket.id);
@@ -94,7 +100,7 @@ io.on("connection", socket => {
     room.monster = { x: 22, z: -35, rot: 0, alert: false };
     room.puzzle = { progress: 0, solved: false, sequence: PUZZLE_SEQUENCE };
     for (const p of room.players.values()) {
-      p.hp = 100; p.stamina = 100; p.battery = 100; p.flashlight = true;
+      p.hp = 100; p.stamina = 100; p.battery = 100; p.flashlight = true; p.sprinting = false;
     }
     io.to(socket.data.room).emit("gameStarted");
     emitState(socket.data.room, room);
@@ -154,7 +160,7 @@ setInterval(() => {
     let target = null;
     for (const p of players) {
       if (!target || distance(p, room.monster) < distance(target, room.monster)) target = p;
-      p.stamina = clamp(p.stamina + 1.8, 0, 100);
+      p.stamina = clamp(p.stamina + (p.sprinting ? -2.8 : 1.8), 0, 100);\n      if (p.stamina <= 0) p.sprinting = false;
       if (p.flashlight && p.battery > 0) p.battery = clamp(p.battery - 0.22, 0, 100);
       if (p.battery <= 0) p.flashlight = false;
     }
