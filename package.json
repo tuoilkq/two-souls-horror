@@ -1,0 +1,9 @@
+{
+  "name": "two-souls-horror",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Two-player online co-op horror game starter",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "express": "^4.21.2", "socket.io": "^4.8.1" }
+}

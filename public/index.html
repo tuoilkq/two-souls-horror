@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Two Souls — Don't Get Separated</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="menu" class="panel">
+    <div class="eyebrow">A TWO-PLAYER ONLINE HORROR GAME</div>
+    <h1>TWO <span>SOULS</span></h1>
+    <p class="subtitle">DON'T GET SEPARATED</p>
+    <p class="intro">ป่าถูกปิดตาย ไฟกำลังดับ และมีบางอย่างกำลังตามล่าคุณอยู่<br>อย่าแยกจากกัน… จงหาฟิวส์ 3 ชิ้นเพื่อเปิดประตูหนี</p>
+    <input id="playerName" maxlength="18" placeholder="ชื่อผู้เล่น" value="Player 1">
+    <div class="actions">
+      <button id="createBtn">สร้างห้องใหม่</button>
+      <div class="joinrow"><input id="roomCode" maxlength="6" placeholder="ROOM CODE"><button id="joinBtn" class="secondary">เข้าร่วมห้อง</button></div>
+    </div>
+    <div id="menuStatus" class="status">สร้างห้องแล้วส่งรหัสให้แฟน เพื่อเข้ามาเล่นด้วยกัน</div>
+    <div id="lobby" class="lobby hidden">
+      <div>รหัสห้องของคุณ</div><strong id="codeDisplay">------</strong>
+      <button id="copyBtn" class="secondary">คัดลอกรหัสห้อง</button>
+      <div id="playersText">กำลังรอผู้เล่นอีกคน…</div>
+      <button id="startBtn" disabled>เริ่มเกม (รอผู้เล่น 2 คน)</button>
+    </div>
+  </div>
+
+  <div id="hud" class="hidden">
+    <div class="topbar"><div class="game-title">TWO SOULS <small>CO-OP SURVIVAL</small></div><div id="connection">● CONNECTING</div></div>
+    <div class="objective"><span>OBJECTIVE</span><b id="objectiveText">ค้นหาฟิวส์ 3 ชิ้น</b><div id="fuseCount">FUSES 0 / 3</div></div>
+    <div id="message" class="message">อย่าแยกจากกัน…</div>
+    <div class="bottom"><div id="partnerStatus">♥ เพื่อนร่วมทีม: เชื่อมต่อแล้ว</div><button id="cameraBtn">เปลี่ยนมุมกล้อง</button><button id="flashBtn">ไฟฉาย: เปิด</button></div>
+    <div id="mobileControls">
+      <div id="joystick"><div id="stick"></div></div>
+      <button id="interactBtn">เก็บของ</button>
+    </div>
+    <div class="hint">WASD เดิน · เมาส์หมุนกล้อง · E เก็บของ · C เปลี่ยนมุมมอง</div>
+  </div>
+  <div id="ending" class="panel hidden">
+    <div class="eyebrow">YOU SURVIVED TOGETHER</div><h1>YOU <span>MADE IT</span></h1>
+    <p class="intro">ประตูเปิดออก… คุณทั้งคู่รอดชีวิตมาได้</p>
+    <button onclick="location.reload()">กลับหน้าหลัก</button>
+  </div>
+  <div id="errorToast"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="game.js"></script>
+</body></html>
